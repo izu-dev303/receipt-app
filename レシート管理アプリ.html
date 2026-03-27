@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>レシート管理</title>
+
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --surface2: #22263a;
+    --border: #2e3248;
+    --accent: #6ee7b7;
+    --accent2: #818cf8;
+    --text: #e2e8f0;
+    --muted: #64748b;
+    --danger: #f87171;
+    --warn: #fbbf24;
+    --radius: 12px;
+    --mono: 'Courier New', monospace;
+    --sans: 'Hiragino Sans', 'Yu Gothic UI', 'Meiryo', sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: var(--sans);
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    font-size: 14px;
+    line-height: 1.6;
+  }
+
+  /* ── Header ── */
+  header {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(15,17,23,0.92);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+    padding: 0 20px;
+    height: 56px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .logo {
+    font-family: var(--mono); font-size: 15px; font-weight: 500;
+    color: var(--accent); letter-spacing: 0.05em;
+  }
+  .logo span { color: var(--muted); }
+  .header-actions { display: flex; gap: 8px; }
+
+  /* ── Buttons ── */
+  .btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 7px 14px; border-radius: 8px;
+    font-family: var(--sans); font-size: 13px; font-weight: 500;
+    cursor: pointer; border: none; transition: all 0.15s;
+    white-space: nowrap;
+  }
+  .btn-primary {
+    background: var(--accent); color: #0f1117;
+  }
+  .btn-primary:hover { background: #a7f3d0; }
+  .btn-ghost {
+    background: transparent; color: var(--muted);
+    border: 1px solid var(--border);
+  }
+  .btn-ghost:hover { background: var(--surface2); color: var(--text); }
+  .btn-danger {
+    background: transparent; color: var(--danger);
+    border: 1px solid transparent;
+    padding: 4px 8px; font-size: 12px;
+  }
+  .btn-danger:hover { background: rgba(248,113,113,0.1); }
+  .btn-csv {
+    background: var(--accent2); color: #fff;
+  }
+  .btn-csv:hover { background: #a5b4fc; }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* ── Layout ── */
+  .container { max-width: 720px; margin: 0 auto; padding: 24px 20px 60px; }
+
+  /* ── Upload Zone ── */
+  .upload-zone {
+    border: 1.5px dashed var(--border);
+    border-radius: var(--radius);
+    padding: 40px 24px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    background: var(--surface);
+    position: relative;
+    overflow: hidden;
+  }
+  .upload-zone::before {
+    content: '';
+    position: absolute; inset: 0;
+    background: radial-gradient(ellipse at 50% 0%, rgba(110,231,183,0.04) 0%, transparent 70%);
+    pointer-events: none;
+  }
+  .upload-zone:hover, .upload-zone.drag-over {
+    border-color: var(--accent);
+    background: rgba(110,231,183,0.04);
+  }
+  .upload-icon {
+    width: 48px; height: 48px; margin: 0 auto 16px;
+    background: var(--surface2);
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px;
+    transition: transform 0.2s;
+  }
+  .upload-zone:hover .upload-icon { transform: scale(1.08); }
+  .upload-title { font-size: 15px; font-weight: 500; margin-bottom: 6px; }
+  .upload-sub { color: var(--muted); font-size: 13px; }
+  #fileInput { display: none; }
+
+  /* ── Preview card ── */
+  .preview-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+    margin-top: 20px;
+    display: none;
+  }
+  .preview-card.show { display: block; }
+  .preview-inner {
+    display: flex; gap: 16px; align-items: flex-start;
+  }
+  #previewImg {
+    width: 90px; height: 110px; object-fit: cover;
+    border-radius: 8px; border: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .preview-fields { flex: 1; display: flex; flex-direction: column; gap: 10px; }
+  .field-row { display: flex; flex-direction: column; gap: 4px; }
+  .field-label {
+    font-family: var(--mono); font-size: 11px; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 0.08em;
+  }
+  .field-input {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 12px;
+    color: var(--text);
+    font-family: var(--sans); font-size: 14px;
+    width: 100%;
+    transition: border-color 0.15s;
+  }
+  .field-input:focus {
+    outline: none; border-color: var(--accent);
+  }
+  .field-input.loading { opacity: 0.5; }
+  .preview-actions {
+    display: flex; gap: 8px; margin-top: 12px; justify-content: flex-end;
+  }
+
+  /* ── AI Status ── */
+  .ai-status {
+    display: flex; align-items: center; gap: 8px;
+    padding: 10px 14px;
+    background: rgba(110,231,183,0.06);
+    border: 1px solid rgba(110,231,183,0.2);
+    border-radius: 8px;
+    margin-top: 12px;
+    font-size: 13px;
+    display: none;
+  }
+  .ai-status.show { display: flex; }
+  .ai-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--accent);
+    animation: pulse 1.2s ease-in-out infinite;
+  }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+  .ai-status.done .ai-dot { animation: none; background: var(--accent); }
+  .ai-status.error { background: rgba(248,113,113,0.06); border-color: rgba(248,113,113,0.2); }
+  .ai-status.error .ai-dot { background: var(--danger); animation: none; }
+
+  /* ── Divider ── */
+  .section-head {
+    display: flex; align-items: center; justify-content: space-between;
+    margin: 32px 0 16px;
+  }
+  .section-title {
+    font-family: var(--mono); font-size: 12px;
+    color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em;
+  }
+  .section-count {
+    font-family: var(--mono); font-size: 12px;
+    background: var(--surface2); color: var(--accent);
+    padding: 2px 8px; border-radius: 20px;
+  }
+
+  /* ── Filter bar ── */
+  .filter-bar {
+    display: flex; gap: 8px; align-items: center;
+    margin-bottom: 16px; flex-wrap: wrap;
+  }
+  .filter-select {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 7px 12px;
+    color: var(--text);
+    font-family: var(--sans); font-size: 13px;
+    cursor: pointer;
+  }
+  .filter-select:focus { outline: none; border-color: var(--accent2); }
+
+  /* ── Receipt list ── */
+  .receipt-list { display: flex; flex-direction: column; gap: 8px; }
+  .receipt-item {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    display: flex; align-items: center; gap: 12px;
+    transition: border-color 0.15s;
+    animation: slideIn 0.2s ease;
+  }
+  @keyframes slideIn { from { opacity:0; transform:translateY(-6px); } to { opacity:1; transform:none; } }
+  .receipt-item:hover { border-color: var(--surface2); }
+  .receipt-date {
+    font-family: var(--mono); font-size: 12px;
+    color: var(--muted); white-space: nowrap; min-width: 82px;
+  }
+  .receipt-store { flex: 1; font-size: 14px; font-weight: 500; }
+  .receipt-amount {
+    font-family: var(--mono); font-size: 15px; font-weight: 500;
+    color: var(--accent); white-space: nowrap;
+  }
+  .receipt-memo { font-size: 12px; color: var(--muted); }
+
+  /* ── Total bar ── */
+  .total-bar {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px 18px;
+    display: flex; justify-content: space-between; align-items: center;
+    margin-top: 16px;
+  }
+  .total-label { font-family: var(--mono); font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
+  .total-amount { font-family: var(--mono); font-size: 20px; font-weight: 500; color: var(--accent); }
+
+  /* ── Empty state ── */
+  .empty-state {
+    text-align: center; padding: 48px 24px;
+    color: var(--muted);
+  }
+  .empty-icon { font-size: 36px; margin-bottom: 12px; }
+
+  /* ── API Key modal ── */
+  .modal-bg {
+    position: fixed; inset: 0; z-index: 200;
+    background: rgba(0,0,0,0.7);
+    backdrop-filter: blur(4px);
+    display: flex; align-items: center; justify-content: center;
+    padding: 20px;
+    display: none;
+  }
+  .modal-bg.show { display: flex; }
+  .modal {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 28px;
+    width: 100%; max-width: 420px;
+  }
+  .modal-title { font-size: 16px; font-weight: 700; margin-bottom: 8px; }
+  .modal-desc { color: var(--muted); font-size: 13px; margin-bottom: 20px; line-height: 1.7; }
+  .modal-desc a { color: var(--accent2); }
+  .modal-input {
+    width: 100%;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 14px;
+    color: var(--text);
+    font-family: var(--mono); font-size: 13px;
+    margin-bottom: 16px;
+  }
+  .modal-input:focus { outline: none; border-color: var(--accent); }
+  .modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
+
+  /* ── Responsive ── */
+  @media (max-width: 500px) {
+    .preview-inner { flex-direction: column; }
+    #previewImg { width: 100%; height: 160px; }
+    .receipt-item { flex-wrap: wrap; }
+    .receipt-store { min-width: 100%; order: -1; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">receipt<span>/</span>scan</div>
+  <div class="header-actions">
+    <button class="btn btn-ghost" onclick="openApiModal()">⚙ APIキー</button>
+  </div>
+</header>
+
+<div id="apiKeyBanner" style="display:none; background:#1e1a2e; border-bottom:2px solid #818cf8; padding:12px 20px; text-align:center;">
+  <span style="color:#a5b4fc; font-size:14px;">⚠️ APIキーが未設定です。</span>
+  <button onclick="openApiModal()" style="margin-left:12px; background:#818cf8; color:#fff; border:none; border-radius:6px; padding:6px 16px; font-size:13px; cursor:pointer; font-weight:600;">🔑 今すぐ設定する</button>
+</div>
+
+<div class="container">
+
+  <!-- Upload Zone -->
+  <div class="upload-zone" id="uploadZone" onclick="document.getElementById('fileInput').click()">
+    <div class="upload-icon">📷</div>
+    <div class="upload-title">レシートをアップロード</div>
+    <div class="upload-sub">タップして画像を選択　または　ドラッグ＆ドロップ</div>
+    <input type="file" id="fileInput" accept="image/*" onchange="handleFile(event)">
+  </div>
+
+  <!-- AI Status -->
+  <div class="ai-status" id="aiStatus">
+    <div class="ai-dot"></div>
+    <span id="aiStatusText">AIがレシートを読み取り中...</span>
+  </div>
+
+  <!-- Preview + Edit Card -->
+  <div class="preview-card" id="previewCard">
+    <div class="preview-inner">
+      <img id="previewImg" src="" alt="レシート">
+      <div class="preview-fields">
+        <div class="field-row">
+          <div class="field-label">日付</div>
+          <input class="field-input" id="fDate" type="date">
+        </div>
+        <div class="field-row">
+          <div class="field-label">店名</div>
+          <input class="field-input" id="fStore" type="text" placeholder="例: セブンイレブン">
+        </div>
+        <div class="field-row">
+          <div class="field-label">合計金額 (円)</div>
+          <input class="field-input" id="fAmount" type="number" placeholder="例: 1280">
+        </div>
+        <div class="field-row">
+          <div class="field-label">メモ (任意)</div>
+          <input class="field-input" id="fMemo" type="text" placeholder="例: 昼食">
+        </div>
+      </div>
+    </div>
+    <div class="preview-actions">
+      <button class="btn btn-ghost" onclick="cancelPreview()">キャンセル</button>
+      <button class="btn btn-primary" onclick="saveReceipt()">💾 保存する</button>
+    </div>
+  </div>
+
+  <!-- List Section -->
+  <div class="section-head">
+    <div class="section-title">保存済みレシート</div>
+    <div class="section-count" id="countBadge">0 件</div>
+  </div>
+
+  <div class="filter-bar">
+    <select class="filter-select" id="monthFilter" onchange="renderList()">
+      <option value="">すべて</option>
+    </select>
+    <button class="btn btn-csv" onclick="exportCSV()">📥 CSV出力</button>
+  </div>
+
+  <div class="receipt-list" id="receiptList"></div>
+
+  <div class="total-bar" id="totalBar" style="display:none">
+    <div class="total-label">合計</div>
+    <div class="total-amount" id="totalAmount">¥0</div>
+  </div>
+
+</div>
+
+<!-- API Key Modal -->
+<div class="modal-bg" id="apiModal">
+  <div class="modal">
+    <div class="modal-title">🔑 Claude APIキー設定</div>
+    <div class="modal-desc">
+      Anthropicのコンソールで取得したAPIキーを入力してください。<br>
+      キーはこのブラウザにのみ保存され、外部には送信されません。<br>
+      <a href="https://console.anthropic.com/" target="_blank">→ console.anthropic.com で取得</a>
+    </div>
+    <input class="modal-input" id="apiKeyInput" type="password" placeholder="sk-ant-...">
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeApiModal()">閉じる</button>
+      <button class="btn btn-primary" onclick="saveApiKey()">保存</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── State ──
+let currentImageBase64 = null;
+const STORAGE_KEY = 'receipt_data_v1';
+const API_KEY_STORE = 'receipt_api_key';
+
+// ── Init ──
+document.addEventListener('DOMContentLoaded', () => {
+  if (!getApiKey()) {
+    document.getElementById('apiKeyBanner').style.display = 'block';
+    openApiModal();
+  }
+  renderList();
+  setupDragDrop();
+});
+
+function getApiKey() {
+  return localStorage.getItem(API_KEY_STORE) || '';
+}
+
+// ── API Key Modal ──
+function openApiModal() {
+  document.getElementById('apiKeyInput').value = getApiKey();
+  document.getElementById('apiModal').classList.add('show');
+}
+function closeApiModal() {
+  document.getElementById('apiModal').classList.remove('show');
+}
+function saveApiKey() {
+  const key = document.getElementById('apiKeyInput').value.trim();
+  if (!key) { alert('APIキーを入力してください'); return; }
+  localStorage.setItem(API_KEY_STORE, key);
+  document.getElementById('apiKeyBanner').style.display = 'none';
+  closeApiModal();
+}
+
+// ── Drag & Drop ──
+function setupDragDrop() {
+  const zone = document.getElementById('uploadZone');
+  zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
+  zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+  zone.addEventListener('drop', e => {
+    e.preventDefault(); zone.classList.remove('drag-over');
+    const file = e.dataTransfer.files[0];
+    if (file && file.type.startsWith('image/')) processImage(file);
+  });
+}
+
+// ── File Handling ──
+function handleFile(e) {
+  const file = e.target.files[0];
+  if (file) processImage(file);
+  e.target.value = '';
+}
+
+function processImage(file) {
+  const reader = new FileReader();
+  reader.onload = async (ev) => {
+    const dataUrl = ev.target.result;
+    currentImageBase64 = dataUrl.split(',')[1];
+    const mimeType = file.type || 'image/jpeg';
+
+    // Show preview image
+    document.getElementById('previewImg').src = dataUrl;
+    showPreviewCard();
+    clearFields();
+    setFieldsLoading(true);
+
+    // Show AI status
+    setAiStatus('reading');
+
+    const apiKey = getApiKey();
+    if (!apiKey) {
+      setAiStatus('error', 'APIキーが設定されていません');
+      setFieldsLoading(false);
+      openApiModal();
+      return;
+    }
+
+    try {
+      const result = await callClaude(currentImageBase64, mimeType, apiKey);
+      fillFields(result);
+      setAiStatus('done', '読み取り完了！内容を確認して保存してください');
+    } catch (err) {
+      setAiStatus('error', 'AI読み取り失敗 — 手動で入力してください（' + err.message + '）');
+    }
+    setFieldsLoading(false);
+  };
+  reader.readAsDataURL(file);
+}
+
+// ── Claude API ──
+async function callClaude(base64, mimeType, apiKey) {
+  const prompt = `あなたは日本のレシート・領収書を読み取る専門のOCRアシスタントです。
+この画像を注意深く解析し、以下のルールに従ってJSON形式のみで返してください。
+
+【日付の読み取りルール】
+- 元号表記は西暦に変換する（例: 令和7年3月26日 → 2025-03-26、令和6年 → 2024年）
+- 短縮年号も変換する（例: R7.3.26 / 25.3.26 / 25/03/26 → 2025-03-26）
+- レシート上部・下部・隅など、どこに印字されていても必ず探す
+- 「年月日」「日付」「Date」「発行日」などのラベル付近を重点的に確認する
+- YYYY-MM-DD形式で返す。見つからない場合のみnullにする
+
+【金額の読み取りルール】
+- 必ず「最終的なお支払い総額」を返す
+- 対象となるラベル: 合計、お支払い合計、税込合計、ご請求金額、お支払い金額、Total、お買上合計（税込）
+- 絶対に使わないラベル: 小計、内税、消費税額、お預り、お釣り、外税、値引、割引
+- 複数の合計欄がある場合は最も大きい最終合計を選ぶ
+- 数字のみ（整数）を返す。¥マーク・円・カンマは除く
+- 見つからない場合のみnullにする
+
+【出力形式】
+余計なテキストや説明は一切不要。以下のJSONのみを返すこと:
+{"date":"YYYY-MM-DD","storeName":"店名","amount":整数}`;
+
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true'
+    },
+    body: JSON.stringify({
+      model: 'claude-opus-4-5',
+      max_tokens: 300,
+      messages: [
+        {
+          role: 'user',
+          content: [
+            { type: 'image', source: { type: 'base64', media_type: mimeType, data: base64 } },
+            { type: 'text', text: prompt }
+          ]
+        },
+        {
+          role: 'assistant',
+          content: '{'
+        }
+      ]
+    })
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error?.message || `HTTP ${res.status}`);
+  }
+
+  const data = await res.json();
+  const text = data.content?.[0]?.text || '';
+
+  // assistantターンの先頭 "{" と結合してからパース
+  const raw = '{' + text;
+  // コードブロックや余分なテキストを除去してJSONを抽出
+  const match = raw.match(/\{[\s\S]*?\}/);
+  if (!match) throw new Error('JSONが取得できませんでした');
+  return JSON.parse(match[0]);
+}
+
+// ── UI Helpers ──
+function showPreviewCard() {
+  document.getElementById('previewCard').classList.add('show');
+}
+function hidePreviewCard() {
+  document.getElementById('previewCard').classList.remove('show');
+  document.getElementById('aiStatus').classList.remove('show');
+  currentImageBase64 = null;
+}
+function clearFields() {
+  ['fDate','fStore','fAmount','fMemo'].forEach(id => document.getElementById(id).value = '');
+}
+function setFieldsLoading(on) {
+  ['fDate','fStore','fAmount'].forEach(id => {
+    document.getElementById(id).classList.toggle('loading', on);
+    document.getElementById(id).disabled = on;
+  });
+}
+function fillFields(data) {
+  if (data.date) document.getElementById('fDate').value = data.date;
+  if (data.storeName) document.getElementById('fStore').value = data.storeName;
+  if (data.amount != null) document.getElementById('fAmount').value = data.amount;
+}
+function setAiStatus(state, msg) {
+  const el = document.getElementById('aiStatus');
+  const dot = el.querySelector('.ai-dot');
+  el.classList.add('show');
+  el.classList.remove('done','error');
+  if (state === 'reading') {
+    document.getElementById('aiStatusText').textContent = 'AIがレシートを読み取り中...';
+    dot.style.animation = '';
+  } else if (state === 'done') {
+    el.classList.add('done');
+    document.getElementById('aiStatusText').textContent = msg;
+  } else if (state === 'error') {
+    el.classList.add('error');
+    document.getElementById('aiStatusText').textContent = msg;
+  }
+}
+function cancelPreview() {
+  hidePreviewCard();
+}
+
+// ── Save Receipt ──
+function saveReceipt() {
+  const date = document.getElementById('fDate').value;
+  const store = document.getElementById('fStore').value.trim();
+  const amount = parseInt(document.getElementById('fAmount').value, 10);
+  const memo = document.getElementById('fMemo').value.trim();
+
+  if (!date || !store || isNaN(amount)) {
+    alert('日付・店名・金額は必須です');
+    return;
+  }
+
+  const receipts = loadReceipts();
+  const item = {
+    id: Date.now().toString(36) + Math.random().toString(36).slice(2,6),
+    date, storeName: store, amount, memo,
+    createdAt: new Date().toISOString()
+  };
+  receipts.unshift(item);
+  saveReceipts(receipts);
+  hidePreviewCard();
+  renderList();
+}
+
+// ── Storage ──
+function loadReceipts() {
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || []; }
+  catch { return []; }
+}
+function saveReceipts(arr) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(arr));
+}
+function deleteReceipt(id) {
+  if (!confirm('このレシートを削除しますか？')) return;
+  const receipts = loadReceipts().filter(r => r.id !== id);
+  saveReceipts(receipts);
+  renderList();
+}
+
+// ── Render List ──
+function renderList() {
+  const all = loadReceipts();
+  const month = document.getElementById('monthFilter').value;
+
+  // Update month options
+  const months = [...new Set(all.map(r => r.date.slice(0,7)))].sort().reverse();
+  const sel = document.getElementById('monthFilter');
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">すべて</option>' + months.map(m =>
+    `<option value="${m}" ${m===cur?'selected':''}>${m.replace('-','年')}月</option>`
+  ).join('');
+
+  const filtered = month ? all.filter(r => r.date.startsWith(month)) : all;
+  const count = filtered.length;
+  document.getElementById('countBadge').textContent = `${count} 件`;
+
+  const list = document.getElementById('receiptList');
+  if (!count) {
+    list.innerHTML = `<div class="empty-state"><div class="empty-icon">🧾</div><div>まだレシートがありません</div></div>`;
+    document.getElementById('totalBar').style.display = 'none';
+    return;
+  }
+
+  list.innerHTML = filtered.map(r => `
+    <div class="receipt-item">
+      <div class="receipt-date">${r.date}</div>
+      <div>
+        <div class="receipt-store">${escHtml(r.storeName)}</div>
+        ${r.memo ? `<div class="receipt-memo">${escHtml(r.memo)}</div>` : ''}
+      </div>
+      <div class="receipt-amount">¥${r.amount.toLocaleString()}</div>
+      <button class="btn btn-danger" onclick="deleteReceipt('${r.id}')">削除</button>
+    </div>
+  `).join('');
+
+  const total = filtered.reduce((s,r) => s + r.amount, 0);
+  document.getElementById('totalAmount').textContent = '¥' + total.toLocaleString();
+  document.getElementById('totalBar').style.display = '';
+}
+
+// ── CSV Export ──
+function exportCSV() {
+  const all = loadReceipts();
+  const month = document.getElementById('monthFilter').value;
+  const data = month ? all.filter(r => r.date.startsWith(month)) : all;
+
+  if (!data.length) { alert('出力するデータがありません'); return; }
+
+  const header = '日付,店名,金額,メモ\n';
+  const rows = data.map(r =>
+    `${r.date},"${(r.storeName||'').replace(/"/g,'""')}",${r.amount},"${(r.memo||'').replace(/"/g,'""')}"`
+  ).join('\n');
+
+  const bom = '\uFEFF';
+  const blob = new Blob([bom + header + rows], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = month ? `receipts_${month}.csv` : 'receipts_all.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function escHtml(s) {
+  return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+</script>
+</body>
+</html>
